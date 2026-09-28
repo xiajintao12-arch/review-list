@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+  <title>复习清单</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#4f7cff">
+  <link rel="icon" href="icons/icon-192.png">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="复习清单">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+  <div id="app">
+
+    <!-- ============ 首次配置（仅本机保存，不进代码库） ============ -->
+    <section id="view-setup" class="view hidden">
+      <div class="login-card">
+        <div class="login-logo">🔗</div>
+        <h1>连接数据库</h1>
+        <p class="login-sub">只填一次，保存在本机浏览器里</p>
+        <form id="form-setup" class="auth-form">
+          <input type="url" id="sb-url" placeholder="Project URL：https://xxx.supabase.co" required>
+          <input type="text" id="sb-key" placeholder="anon public key" required>
+          <button type="submit" class="btn-primary" id="setup-submit">连接并开始</button>
+        </form>
+        <p id="setup-msg" class="login-msg"></p>
+        <p class="login-sub" style="margin-top:14px">
+          还没有数据库？看仓库里的 README.md，三步搞定（建项目 → 粘贴建表 SQL → 把 URL 和 key 填进来）
+        </p>
+      </div>
+    </section>
+
+    <!-- ============ 今日 List（免登录，打开即用） ============ -->
+    <section id="view-list" class="view hidden">
+      <header class="topbar">
+        <h1 id="today-title">今天</h1>
+        <button id="btn-more" class="icon-btn" aria-label="更多功能">☰</button>
+      </header>
+      <main id="today-scroll">
+        <div id="today-list"></div>
+        <div id="today-done-note" class="done-note hidden"></div>
+      </main>
+      <div class="addbar">
+        <div id="attach-chips" class="attach-chips"></div>
+        <div class="addrow">
+          <label class="attach-btn" title="添加附件">
+            <span>📎</span>
+            <input type="file" id="file-input" multiple hidden>
+          </label>
+          <input id="task-input" placeholder="标题即行动：今天学了什么？" autocomplete="off">
+          <button id="btn-add" class="send-btn" aria-label="添加">➤</button>
+        </div>
+        <div class="addopts">
+          <label class="ddl-toggle"><input type="checkbox" id="ddl-toggle"> DDL</label>
+          <input type="date" id="ddl-date" class="hidden">
+          <span class="hint" id="add-hint">不设 DDL → 自动按遗忘曲线安排复习</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============ 更多功能 ============ -->
+    <section id="view-more" class="view hidden">
+      <header class="topbar">
+        <button id="btn-back" class="icon-btn" aria-label="返回">←</button>
+        <h1>更多功能</h1>
+        <span class="topbar-space"></span>
+      </header>
+      <main id="more-scroll">
+        <div class="charts-row">
+          <div class="chart-card">
+            <div class="chart-title">完成个数 · 近7天</div>
+            <div id="chart-count"></div>
+          </div>
+          <div class="chart-card">
+            <div class="chart-title">完成百分数 · 近7天</div>
+            <div id="chart-percent"></div>
+          </div>
+        </div>
+
+        <h2 class="section-title">接下来 14 天</h2>
+        <div id="upcoming"></div>
+
+        <h2 class="section-title">任务管理</h2>
+        <div id="manage-list"></div>
+
+        <div class="footer-note">
+          FSRS 遗忘曲线 · 数据存 Supabase
+          <br><button id="btn-reconfig" class="btn-link" style="margin-top:6px">⚙ 数据库设置</button>
+        </div>
+      </main>
+    </section>
+  </div>
+
+  <div id="modal-root" class="hidden"></div>
+  <div id="toast" class="hidden"></div>
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
