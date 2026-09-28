@@ -11,6 +11,15 @@ function loadCfg() {
 }
 function saveCfg(cfg) { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)) }
 
+/* 配置优先级：本机 localStorage > 仓库内置 js/config.js（部署时写入） */
+function resolveCfg() {
+  const local = loadCfg()
+  if (local && local.url) return local
+  const built = (typeof window !== 'undefined') && window.APP_CONFIG
+  if (built && built.url && built.key) return { url: built.url, key: built.key }
+  return null
+}
+
 async function connect(cfg) {
   const supabase = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm')
   sb = supabase.createClient(cfg.url.trim().replace(/\/$/, ''), cfg.key.trim())
@@ -766,7 +775,7 @@ async function boot() {
     return
   }
 
-  const cfg = loadCfg()
+  const cfg = resolveCfg()
   if (cfg) {
     try {
       await connect(cfg)
