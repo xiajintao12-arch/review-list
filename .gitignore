@@ -1,3 +1,4 @@
 .workbuddy/
 *.genie
 .tmp/
+.deploy.env

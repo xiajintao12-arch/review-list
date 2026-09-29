@@ -1,33 +1,41 @@
 /* 复习清单 · FSRS 遗忘曲线复习任务管理 */
 'use strict'
 
-/* ========== 数据后端：Supabase（配置保存在本机浏览器，不进代码库） ========== */
-const CFG_KEY = 'review-list-cfg'
-let sb = null
-let db = null
+/* ========== 数据后端：Vercel 服务端 + 云存储（/api/state） ========== */
+let STATE = { tasks: [], logs: [], stats: {} }
+let saveTimer = null
 
-function loadCfg() {
-  try { return JSON.parse(localStorage.getItem(CFG_KEY) || 'null') } catch (e) { return null }
+async function loadState() {
+  const res = await fetch('api/state', { cache: 'no-store' })
+  if (!res.ok) throw new Error('读取失败：' + (await res.text()).slice(0, 80))
+  const data = await res.json()
+  STATE = {
+    tasks: Array.isArray(data.tasks) ? data.tasks : [],
+    logs: Array.isArray(data.logs) ? data.logs : [],
+    stats: data.stats && typeof data.stats === 'object' ? data.stats : {},
+  }
+  /* card 统一为对象，便于后续算法使用 */
+  for (const t of STATE.tasks) {
+    if (typeof t.card === 'string' && t.card) {
+      try { t.card = JSON.parse(t.card) } catch (e) { t.card = null }
+    }
+  }
+  return STATE
 }
-function saveCfg(cfg) { localStorage.setItem(CFG_KEY, JSON.stringify(cfg)) }
 
-/* 配置优先级：本机 localStorage > 仓库内置 js/config.js（部署时写入） */
-function resolveCfg() {
-  const local = loadCfg()
-  if (local && local.url) return local
-  const built = (typeof window !== 'undefined') && window.APP_CONFIG
-  if (built && built.url && built.key) return { url: built.url, key: built.key }
-  return null
-}
-
-async function connect(cfg) {
-  const supabase = await import('https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm')
-  sb = supabase.createClient(cfg.url.trim().replace(/\/$/, ''), cfg.key.trim())
-  db = sb
-  const { error } = await db.from('tasks').select('id').limit(1)
-  if (error) throw new Error(error.message || '连接失败')
-  saveCfg(cfg)
-  return true
+function saveState() {
+  clearTimeout(saveTimer)
+  saveTimer = setTimeout(async () => {
+    try {
+      const payload = JSON.parse(JSON.stringify(STATE))
+      const res = await fetch('api/state', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+      })
+      if (!res.ok) toast('保存失败：' + (await res.text()).slice(0, 60), 4000)
+    } catch (e) { toast('保存失败：' + (e.message || '网络问题'), 4000) }
+  }, 120)
 }
 
 /* 免登录模式：数据对持有链接和数据库地址的人开放，附件直存数据库（单文件 2MB） */
@@ -113,7 +121,7 @@ function serializeCard(card) {
   })
 }
 function deserializeCard(json) {
-  const c = JSON.parse(json)
+  const c = typeof json === 'string' ? JSON.parse(json) : { ...json }
   c.due = new Date(c.due)
   if (c.last_review) c.last_review = new Date(c.last_review)
   return c
@@ -126,44 +134,46 @@ function intervalForRetention(stability, r) {
   return Math.max(1, Math.round(t))
 }
 
-/* ========== 数据层 ========== */
-function unwrap(res, what) {
-  if (res.error) throw new Error(`${what}失败: ${res.error.message || res.error}`)
-  return res.data
+/* ========== 数据层（内存状态 + 保存） ========== */
+function nextId(list) {
+  return list.reduce((m, x) => Math.max(m, Number(x.id) || 0), 0) + 1
 }
 
 async function loadTasks() {
-  const data = unwrap(await db.from('tasks').select('*').order('created_at'), '读取任务')
-  return data
+  await loadState()
+  return STATE.tasks
 }
-async function loadRecentLogs(days = 30) {
+function loadRecentLogs(days = 30) {
   const since = new Date(); since.setDate(since.getDate() - days)
-  const data = unwrap(
-    await db.from('review_logs')
-      .select('task_id,rating,state,scheduled_days,elapsed_days,reviewed_at')
-      .gte('reviewed_at', since.toISOString()),
-    '读取复习记录')
-  return data
+  return STATE.logs.filter((l) => new Date(l.reviewed_at) >= since)
 }
-async function loadStats(days = 30) {
+function loadStats(days = 30) {
   const since = dayKey(addDays(new Date(), -days))
-  const data = unwrap(
-    await db.from('daily_stats').select('*').gte('day', since),
-    '读取统计')
-  return data
+  return Object.keys(STATE.stats)
+    .filter((d) => d >= since)
+    .map((d) => ({ day: d, planned: STATE.stats[d].planned, completed: STATE.stats[d].completed }))
 }
 
-async function createTask({ title, kind, ddlDate, attachments }) {
-  const row = { title, kind, attachments: attachments || [] }
+function createTask({ title, kind, ddlDate, attachments }) {
+  const row = {
+    id: nextId(STATE.tasks),
+    title,
+    kind,
+    attachments: attachments || [],
+    created_at: new Date().toISOString(),
+    completed_at: null,
+    ddl_date: null,
+    desired_retention: 0.9,
+    card: null,
+  }
   if (kind === 'ddl') {
     row.ddl_date = ddlDate
   } else {
-    const card = F.createEmptyCard(new Date())
-    row.card = serializeCard(card)
-    row.desired_retention = 0.9
+    row.card = deserializeCard(serializeCard(F.createEmptyCard(new Date())))
   }
-  const created = unwrap(await db.from('tasks').insert(row).select(), '创建任务')
-  return created[0]
+  STATE.tasks.push(row)
+  saveState()
+  return row
 }
 
 function readAsDataURL(file) {
@@ -179,15 +189,14 @@ async function attachFiles(task, files, existing) {
   const atts = [...(existing || [])]
   for (const file of files) {
     if (file.size > MAX_ATTACHMENT_BYTES) {
-      toast(`「${file.name}」超过 2MB，已跳过（免登录模式附件直存数据库）`)
+      toast(`「${file.name}」超过 2MB，已跳过`)
       continue
     }
     const dataUrl = await readAsDataURL(file)
     atts.push({ name: file.name, size: file.size, type: file.type || '', data: dataUrl })
   }
-  if (atts.length !== (existing || []).length) {
-    unwrap(await db.from('tasks').update({ attachments: atts }).eq('id', task.id).select(), '保存附件')
-  }
+  task.attachments = atts
+  saveState()
   return atts
 }
 
@@ -195,57 +204,52 @@ async function attachFiles(task, files, existing) {
 async function doReview(task, rating) {
   const now = new Date()
   const card = deserializeCard(task.card)
-  const f = makeFsrs(task.desired_retention)
-  const scheduled = f.repeat(card, now)[rating]
-  const nextCard = scheduled.card
-  unwrap(
-    await db.from('tasks').update({ card: serializeCard(nextCard) }).eq('id', task.id).select(),
-    '更新复习计划')
-  unwrap(
-    await db.from('review_logs').insert({
-      task_id: task.id,
-      rating,
-      state: Number(card.state),
-      scheduled_days: Number(nextCard.scheduled_days),
-      elapsed_days: Number(nextCard.elapsed_days),
-    }),
-    '记录复习')
-  await recountStats(todayKey())
+  const scheduled = makeFsrs(task.desired_retention).repeat(card, now)[rating]
+  task.card = deserializeCard(serializeCard(scheduled.card))
+  STATE.logs.push({
+    id: nextId(STATE.logs),
+    task_id: task.id,
+    rating,
+    state: Number(card.state),
+    scheduled_days: Number(scheduled.card.scheduled_days),
+    elapsed_days: Number(scheduled.card.elapsed_days),
+    reviewed_at: now.toISOString(),
+  })
+  recountStats(todayKey())
+  saveState()
 }
 
 async function completeDdl(task) {
-  unwrap(
-    await db.from('tasks').update({ completed_at: new Date().toISOString() }).eq('id', task.id).select(),
-    '完成任务')
-  await recountStats(todayKey())
+  task.completed_at = new Date().toISOString()
+  recountStats(todayKey())
+  saveState()
 }
 async function uncompleteDdl(task) {
-  unwrap(
-    await db.from('tasks').update({ completed_at: null }).eq('id', task.id).select(),
-    '取消完成')
-  await recountStats(todayKey())
+  task.completed_at = null
+  recountStats(todayKey())
+  saveState()
 }
 
 async function changeRetention(task, r) {
-  const updates = { desired_retention: r }
+  task.desired_retention = r
   if (task.card) {
     const card = deserializeCard(task.card)
     const anchor = card.last_review ? new Date(card.last_review) : new Date(task.created_at)
     const s = Number(card.stability) || 0
     if (s > 0) {
-      const days = intervalForRetention(s, r)
-      let due = addDays(anchor, days)
+      let due = addDays(anchor, intervalForRetention(s, r))
       if (due < new Date()) due = new Date()
       card.due = due
-      updates.card = serializeCard(card)
+      task.card = card
     }
   }
-  unwrap(await db.from('tasks').update(updates).eq('id', task.id).select(), '调整记忆强度')
+  saveState()
 }
 
 async function deleteTask(task) {
-  unwrap(await db.from('review_logs').delete().eq('task_id', task.id).select(), '清理复习记录')
-  unwrap(await db.from('tasks').delete().eq('id', task.id).select(), '删除任务')
+  STATE.tasks = STATE.tasks.filter((t) => t.id !== task.id)
+  STATE.logs = STATE.logs.filter((l) => l.task_id !== task.id)
+  saveState()
 }
 
 /* 某天的计划数 / 完成数 */
@@ -268,30 +272,19 @@ function completedForDay(tasks, logs, key) {
   }
   return n
 }
-async function recountStats(key) {
-  const [tasks, logs, stats] = await Promise.all([loadTasks(), loadRecentLogs(3), loadStats(3)])
-  const planned = plannedForDay(tasks, key)
-  const completed = completedForDay(tasks, logs, key)
-  const row = stats.find((s) => s.day === key)
-  if (!row) {
-    await db.from('daily_stats').insert({ day: key, planned, completed })
-  } else if (row.planned !== planned || row.completed !== completed) {
-    await db.from('daily_stats')
-      .update({ planned: Math.max(row.planned, planned), completed })
-      .eq('id', row.id)
-  }
-  return { planned, completed }
+function recountStats(key) {
+  const planned = plannedForDay(STATE.tasks, key)
+  const completed = completedForDay(STATE.tasks, STATE.logs, key)
+  const cur = STATE.stats[key] || { planned: 0, completed: 0 }
+  STATE.stats[key] = { planned: Math.max(cur.planned, planned), completed }
+  return STATE.stats[key]
 }
-async function bumpPlanned() {
+function bumpPlanned() {
   const key = todayKey()
-  const [tasks, stats] = await Promise.all([loadTasks(), loadStats(1)])
-  const planned = plannedForDay(tasks, key)
-  const row = stats.find((s) => s.day === key)
-  if (!row) {
-    await db.from('daily_stats').insert({ day: key, planned, completed: 0 })
-  } else if (planned > row.planned) {
-    await db.from('daily_stats').update({ planned }).eq('id', row.id)
-  }
+  const planned = plannedForDay(STATE.tasks, key)
+  const cur = STATE.stats[key] || { planned: 0, completed: 0 }
+  STATE.stats[key] = { planned: Math.max(cur.planned, planned), completed: cur.completed }
+  saveState()
 }
 
 /* ========== 视图切换 ========== */
@@ -568,7 +561,8 @@ async function openDetail(id) {
     ddlEdit.addEventListener('change', async () => {
       if (!ddlEdit.value) return
       try {
-        unwrap(await db.from('tasks').update({ ddl_date: ddlEdit.value }).eq('id', t.id).select(), '修改DDL')
+        t.ddl_date = ddlEdit.value
+        saveState()
         toast('DDL 已更新')
         await refreshTasks()
       } catch (e) { toast(e.message || '修改失败') }
@@ -633,7 +627,10 @@ function lineChart(container, labels, values, { unit = '', percent = false, colo
 }
 
 async function renderMore() {
-  const [tasks, logs, stats] = await Promise.all([loadTasks(), loadRecentLogs(30), loadStats(30)])
+  await loadState()
+  const tasks = STATE.tasks
+  const logs = loadRecentLogs(30)
+  const stats = loadStats(30)
   TASKS = tasks
 
   /* 近7天折线图 */
@@ -740,32 +737,9 @@ async function renderMore() {
   }))
 }
 
-/* ========== 启动（免登录，打开即用） ========== */
-function bindSetup() {
-  $('#form-setup').addEventListener('submit', async (e) => {
-    e.preventDefault()
-    const msg = $('#setup-msg')
-    msg.textContent = ''
-    const btn = $('#setup-submit'); btn.disabled = true
-    try {
-      await connect({ url: $('#sb-url').value.trim(), key: $('#sb-key').value.trim() })
-      show('list')
-      await refreshTasks()
-    } catch (err) {
-      msg.textContent = '连接失败：' + (err.message || '请检查地址和 key')
-      btn.disabled = false
-    }
-  })
-  $('#btn-reconfig').addEventListener('click', () => {
-    const cfg = loadCfg()
-    if (cfg) { $('#sb-url').value = cfg.url; $('#sb-key').value = cfg.key }
-    show('setup')
-  })
-}
-
+/* ========== 启动（打开即用） ========== */
 async function boot() {
   bindAdd()
-  bindSetup()
   $('#btn-more').addEventListener('click', async () => { show('more'); await renderMore() })
   $('#btn-back').addEventListener('click', () => { show('list'); renderToday() })
 
@@ -775,18 +749,11 @@ async function boot() {
     return
   }
 
-  const cfg = resolveCfg()
-  if (cfg) {
-    try {
-      await connect(cfg)
-      show('list')
-      await refreshTasks()
-    } catch (err) {
-      toast('数据库连接失效，请重新配置', 4000)
-      show('setup')
-    }
-  } else {
-    show('setup')
+  show('list')
+  try {
+    await refreshTasks()
+  } catch (e) {
+    toast('数据读取失败：' + (e.message || '请刷新重试'), 6000)
   }
 
   if ('serviceWorker' in navigator) {

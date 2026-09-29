@@ -18,23 +18,6 @@
 <body>
   <div id="app">
 
-    <!-- ============ 首次配置（仅本机保存，不进代码库） ============ -->
-    <section id="view-setup" class="view hidden">
-      <div class="login-card">
-        <div class="login-logo">🔗</div>
-        <h1>连接数据库</h1>
-        <p class="login-sub">只填一次，保存在本机浏览器里</p>
-        <form id="form-setup" class="auth-form">
-          <input type="url" id="sb-url" placeholder="Project URL：https://xxx.supabase.co" required>
-          <input type="text" id="sb-key" placeholder="anon public key" required>
-          <button type="submit" class="btn-primary" id="setup-submit">连接并开始</button>
-        </form>
-        <p id="setup-msg" class="login-msg"></p>
-        <p class="login-sub" style="margin-top:14px">
-          还没有数据库？看仓库里的 README.md，三步搞定（建项目 → 粘贴建表 SQL → 把 URL 和 key 填进来）
-        </p>
-      </div>
-    </section>
 
     <!-- ============ 今日 List（免登录，打开即用） ============ -->
     <section id="view-list" class="view hidden">
@@ -89,10 +72,7 @@
         <h2 class="section-title">任务管理</h2>
         <div id="manage-list"></div>
 
-        <div class="footer-note">
-          FSRS 遗忘曲线 · 数据存 Supabase
-          <br><button id="btn-reconfig" class="btn-link" style="margin-top:6px">⚙ 数据库设置</button>
-        </div>
+        <div class="footer-note">FSRS 遗忘曲线 · 数据云端同步（Vercel）</div>
       </main>
     </section>
   </div>
