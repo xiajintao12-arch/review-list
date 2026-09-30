@@ -4,7 +4,7 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
   <title>复习清单</title>
-  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="manifest" href="manifest.json">
   <meta name="theme-color" content="#4f7cff">
   <link rel="icon" href="icons/icon-192.png">
   <link rel="apple-touch-icon" href="icons/icon-192.png">
@@ -13,7 +13,6 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="复习清单">
   <link rel="stylesheet" href="css/style.css">
-  <script src="js/config.js"></script>
 </head>
 <body>
   <div id="app">
@@ -72,7 +71,15 @@
         <h2 class="section-title">任务管理</h2>
         <div id="manage-list"></div>
 
-        <div class="footer-note">FSRS 遗忘曲线 · 数据云端同步（Vercel）</div>
+        <div class="footer-note">
+          FSRS 遗忘曲线 · 数据存在这台设备上
+          <br><span style="color:#b45309">换设备或清浏览器缓存前，务必先导出备份</span>
+        </div>
+        <div class="backup-row">
+          <button id="btn-export" class="btn-ghost">导出备份</button>
+          <button id="btn-import" class="btn-ghost">导入备份</button>
+          <input type="file" id="import-input" accept="application/json,.json" hidden>
+        </div>
       </main>
     </section>
   </div>
