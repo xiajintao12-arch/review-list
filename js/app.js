@@ -1,18 +1,27 @@
 /* 复习清单 · FSRS 遗忘曲线复习任务管理 */
 'use strict'
 
-/* ========== 数据后端：Vercel 服务端 + 云存储（/api/state） ========== */
+/* ========== 数据后端：本机存储（localStorage）+ 导出/导入备份 ========== */
+const STORE_KEY = 'review-list-state-v1'
 let STATE = { tasks: [], logs: [], stats: {} }
 let saveTimer = null
 
 async function loadState() {
-  const res = await fetch('api/state', { cache: 'no-store' })
-  if (!res.ok) throw new Error('读取失败：' + (await res.text()).slice(0, 80))
-  const data = await res.json()
-  STATE = {
-    tasks: Array.isArray(data.tasks) ? data.tasks : [],
-    logs: Array.isArray(data.logs) ? data.logs : [],
-    stats: data.stats && typeof data.stats === 'object' ? data.stats : {},
+  let raw = null
+  try { raw = localStorage.getItem(STORE_KEY) } catch (e) { raw = null }
+  if (!raw) {
+    STATE = { tasks: [], logs: [], stats: {} }
+    return STATE
+  }
+  try {
+    const data = JSON.parse(raw)
+    STATE = {
+      tasks: Array.isArray(data.tasks) ? data.tasks : [],
+      logs: Array.isArray(data.logs) ? data.logs : [],
+      stats: data.stats && typeof data.stats === 'object' ? data.stats : {},
+    }
+  } catch (e) {
+    STATE = { tasks: [], logs: [], stats: {} }
   }
   /* card 统一为对象，便于后续算法使用 */
   for (const t of STATE.tasks) {
@@ -25,17 +34,56 @@ async function loadState() {
 
 function saveState() {
   clearTimeout(saveTimer)
-  saveTimer = setTimeout(async () => {
+  saveTimer = setTimeout(() => {
     try {
-      const payload = JSON.parse(JSON.stringify(STATE))
-      const res = await fetch('api/state', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      })
-      if (!res.ok) toast('保存失败：' + (await res.text()).slice(0, 60), 4000)
-    } catch (e) { toast('保存失败：' + (e.message || '网络问题'), 4000) }
+      localStorage.setItem(STORE_KEY, JSON.stringify(STATE))
+    } catch (e) {
+      toast('存储空间不足：附件太大了，建议删除一些附件或改用小一点的文件', 5000)
+    }
   }, 120)
+}
+
+/* 导出备份（含附件） */
+function exportBackup() {
+  const payload = JSON.stringify({ version: 1, exported_at: new Date().toISOString(), ...STATE }, null, 2)
+  const blob = new Blob([payload], { type: 'application/json' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `复习清单备份-${todayKey()}.json`
+  document.body.appendChild(a)
+  a.click()
+  a.remove()
+  setTimeout(() => URL.revokeObjectURL(url), 30000)
+  toast('备份已导出，请存到网盘或发给自己')
+}
+
+/* 导入备份 */
+function importBackup(file) {
+  const fr = new FileReader()
+  fr.onload = async () => {
+    try {
+      const data = JSON.parse(fr.result)
+      if (!Array.isArray(data.tasks)) throw new Error('格式不对')
+      STATE = {
+        tasks: data.tasks,
+        logs: Array.isArray(data.logs) ? data.logs : [],
+        stats: data.stats && typeof data.stats === 'object' ? data.stats : {},
+      }
+      for (const t of STATE.tasks) {
+        if (typeof t.card === 'string' && t.card) {
+          try { t.card = JSON.parse(t.card) } catch (e) { t.card = null }
+        }
+      }
+      saveState()
+      TASKS = STATE.tasks
+      renderToday()
+      toast(`已导入 ${STATE.tasks.length} 个任务`)
+    } catch (e) {
+      toast('导入失败：文件不是有效的备份')
+    }
+  }
+  fr.readAsText(file)
 }
 
 /* 免登录模式：数据对持有链接和数据库地址的人开放，附件直存数据库（单文件 2MB） */
@@ -740,6 +788,13 @@ async function renderMore() {
 /* ========== 启动（打开即用） ========== */
 async function boot() {
   bindAdd()
+  $('#btn-export').addEventListener('click', exportBackup)
+  $('#btn-import').addEventListener('click', () => $('#import-input').click())
+  $('#import-input').addEventListener('change', (e) => {
+    const f = e.target.files[0]
+    if (f) importBackup(f)
+    e.target.value = ''
+  })
   $('#btn-more').addEventListener('click', async () => { show('more'); await renderMore() })
   $('#btn-back').addEventListener('click', () => { show('list'); renderToday() })
 
