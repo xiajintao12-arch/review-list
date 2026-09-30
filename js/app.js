@@ -4,9 +4,11 @@
 /* ========== 数据后端：本机存储（localStorage）+ 导出/导入备份 ========== */
 const STORE_KEY = 'review-list-state-v1'
 let STATE = { tasks: [], logs: [], stats: {} }
-let saveTimer = null
+let stateLoaded = false
 
 async function loadState() {
+  /* 本机存储：只在首次读取，之后以内存为准，避免刚写入又被旧值覆盖 */
+  if (stateLoaded) return STATE
   let raw = null
   try { raw = localStorage.getItem(STORE_KEY) } catch (e) { raw = null }
   if (!raw) {
@@ -29,18 +31,16 @@ async function loadState() {
       try { t.card = JSON.parse(t.card) } catch (e) { t.card = null }
     }
   }
+  stateLoaded = true
   return STATE
 }
 
 function saveState() {
-  clearTimeout(saveTimer)
-  saveTimer = setTimeout(() => {
-    try {
-      localStorage.setItem(STORE_KEY, JSON.stringify(STATE))
-    } catch (e) {
-      toast('存储空间不足：附件太大了，建议删除一些附件或改用小一点的文件', 5000)
-    }
-  }, 120)
+  try {
+    localStorage.setItem(STORE_KEY, JSON.stringify(STATE))
+  } catch (e) {
+    toast('存储空间不足：附件太大了，建议删除一些附件或换个小文件', 5000)
+  }
 }
 
 /* 导出备份（含附件） */
