@@ -2,3 +2,5 @@
 *.genie
 .tmp/
 .deploy.env
+.playwright-cli/
+*.yaml
