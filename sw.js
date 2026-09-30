@@ -1,14 +1,13 @@
 /* 复习清单 Service Worker：缓存应用外壳，云接口永不缓存 */
 'use strict'
 
-const CACHE = 'review-list-v4'
+const CACHE = 'review-list-v5'
 const SHELL = [
   './',
   'index.html',
   'css/style.css',
   'js/app.js',
-  'js/config.js',
-  'manifest.webmanifest',
+  'manifest.json',
   'icons/icon-192.png',
   'icons/icon-512.png',
 ]
