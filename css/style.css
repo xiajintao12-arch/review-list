@@ -211,6 +211,8 @@ body {
   padding: 13px; border-radius: 12px; font-size: 15px; cursor: pointer;
 }
 .footer-note { text-align: center; color: var(--text-2); font-size: 11px; margin-top: 14px; }
+.backup-row { display: flex; gap: 8px; margin-top: 10px; }
+.backup-row .btn-ghost { flex: 1; padding: 10px; font-size: 13px; }
 
 /* ---------- 弹窗 ---------- */
 #modal-root {
